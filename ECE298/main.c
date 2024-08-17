@@ -46,7 +46,6 @@ ADC_HandleTypeDef hadc1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim5;
-TIM_HandleTypeDef htim9;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
@@ -66,7 +65,6 @@ static void MX_USART1_UART_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM5_Init(void);
-static void MX_TIM9_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -74,11 +72,13 @@ static void MX_TIM9_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 uint8_t rcv_intpt_flag = 0;
-uint16_t distance = 0;
+uint16_t distance = 56;
 uint8_t us100_Rx_flag;
 uint8_t cmd_dist = 0x55;
 int rpm_tick_count = 0;
-float rpm = 0;
+double rpm = 0;
+int clock_secs = 0;
+int clock_mins = 0;
 int clock_hours = 0;
 int seconds = 0;
 int sec = 0;
@@ -88,6 +88,8 @@ int TIM3_DCM_PWM = 0;
 int digits[2] = {0};
 double percent = 0;
 int temp = 0;
+int pastHour = -1;
+int isFull = 0;
 
 void DIGIT_A_Display(uint8_t DIGIT_A)
 {
@@ -382,37 +384,45 @@ void ADC_Select_CH(int CH)
 void distance_sensor()
 {
 	// Distance Sensor
-  HAL_UART_Receive_IT(&huart1,us100_buffer,2);
-  HAL_UART_Transmit(&huart1, &cmd_dist, 1, 500);
-  while(us100_Rx_flag = (00)) {};
-  distance = us100_buffer[0] << 8 | us100_buffer[1];
-  if(distance >= 650){
-  			TIM3->CCR3 = 0;
-  			TIM3->CCR1 = 0;
-
-  			HAL_GPIO_WritePin(GPIOA, GRN_Pin, GPIO_PIN_RESET);
-  		  HAL_GPIO_WritePin(GPIOA, BLU_Pin, GPIO_PIN_RESET);
-  		  HAL_GPIO_WritePin(GPIOA, RFD_Pin, GPIO_PIN_RESET);
-  		  HAL_GPIO_WritePin(GPIOA, RFD_Pin, GPIO_PIN_SET);
-
-  		  HAL_Delay(1000);
-
-  		  HAL_GPIO_WritePin(GPIOA, GRN_Pin, GPIO_PIN_RESET);
-  		  		  HAL_GPIO_WritePin(GPIOA, BLU_Pin, GPIO_PIN_RESET);
-  		  		  HAL_GPIO_WritePin(GPIOA, RFD_Pin, GPIO_PIN_RESET);
-  		  HAL_GPIO_WritePin(GPIOA, GRN_Pin, GPIO_PIN_SET);
+	  HAL_UART_Receive_IT(&huart1,us100_buffer,2);
+	  HAL_UART_Transmit(&huart1, &cmd_dist, 1, 500);
+	  while(us100_Rx_flag = (00)) {};
+	  distance = us100_buffer[0] << 8 | us100_buffer[1];
+	  if(distance >= 650){
+		  uint8_t buffer[128] = {0};
+		TIM3->CCR3 = 0;
+		TIM3->CCR1 = 0;
+		sprintf((char*)buffer, "\r\n---------------RESERVOIR IS EMPTY----------------");
+		HAL_UART_Transmit(&huart6, buffer, strlen((char*)buffer), 1000);
 
 
-  		  HAL_Delay(1000);
-  		  HAL_GPIO_WritePin(GPIOA, GRN_Pin, GPIO_PIN_RESET);
-  		  		  HAL_GPIO_WritePin(GPIOA, BLU_Pin, GPIO_PIN_RESET);
-  		  		  HAL_GPIO_WritePin(GPIOA, RFD_Pin, GPIO_PIN_RESET);
-  		  HAL_GPIO_WritePin(GPIOA, BLU_Pin, GPIO_PIN_SET);
 
-  		HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET); // Turn off LD2 LED
-  		  while(1){}
+	HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_RESET); // Turn off LD2 LED
 
-  		}
+	  while(1){
+		  HAL_GPIO_WritePin(GPIOA, GRN_Pin, GPIO_PIN_RESET);
+		  HAL_GPIO_WritePin(GPIOA, BLU_Pin, GPIO_PIN_RESET);
+		  HAL_GPIO_WritePin(GPIOA, RFD_Pin, GPIO_PIN_RESET);
+		  HAL_GPIO_WritePin(GPIOA, RFD_Pin, GPIO_PIN_SET);
+
+		  HAL_Delay(1000);
+
+		  HAL_GPIO_WritePin(GPIOA, GRN_Pin, GPIO_PIN_RESET);
+				  HAL_GPIO_WritePin(GPIOA, BLU_Pin, GPIO_PIN_RESET);
+				  HAL_GPIO_WritePin(GPIOA, RFD_Pin, GPIO_PIN_RESET);
+		  HAL_GPIO_WritePin(GPIOA, GRN_Pin, GPIO_PIN_SET);
+
+
+		  HAL_Delay(1000);
+		  HAL_GPIO_WritePin(GPIOA, GRN_Pin, GPIO_PIN_RESET);
+				  HAL_GPIO_WritePin(GPIOA, BLU_Pin, GPIO_PIN_RESET);
+				  HAL_GPIO_WritePin(GPIOA, RFD_Pin, GPIO_PIN_RESET);
+		  HAL_GPIO_WritePin(GPIOA, BLU_Pin, GPIO_PIN_SET);
+
+		  HAL_Delay(1000);
+	  }
+
+	}
 }
 
 void manual_mode_INLET()
@@ -441,10 +451,10 @@ void digits_set()
 {
 	// calculate percentage fill
 	  percent = ((650-distance)*100)/650;
-	  digits[0] = (int)(percent)%10;
-	  digits[1] = (int)(percent)/10;
+	  digits[0] = ((int)(percent))%10;
+	  digits[1] = ((int)percent / 10)%10;
 
-	  HAL_Delay(10);
+	  HAL_Delay(100);
 
 	  // display percentage full on timer board
 	  DIGIT_A_Display(digits[1]);
@@ -512,7 +522,6 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM2_Init();
   MX_TIM5_Init();
-  MX_TIM9_Init();
   /* USER CODE BEGIN 2 */
 
   // Servo Motor
@@ -535,7 +544,7 @@ int main(void)
 	sprintf((char*)txd_msg_buffer, "\r\n----------------SETUP MODE----------------");
 	HAL_UART_Transmit(&huart6, txd_msg_buffer, strlen((char*)txd_msg_buffer), 1000);
 
-	sprintf((char*)txd_msg_buffer16, "\r\nCURRENT WALL CLOCK TIME (0-23): ");
+	sprintf((char*)txd_msg_buffer16, "\r\nCURRENT WALL CLOCK TIME (00-23): ");
 	HAL_UART_Transmit(&huart6, txd_msg_buffer16, strlen((char*)txd_msg_buffer16), 1000);
 	rcv_intpt_flag = 00;
 	HAL_UART_Receive_IT(&huart6,&byte,1);
@@ -568,33 +577,6 @@ int main(void)
 			break;
 	}
 
-	sprintf((char*)txd_msg_buffer1, "\r\nFor Inlet Enter START TIME (0-23): ");
-	HAL_UART_Transmit(&huart6, txd_msg_buffer1, strlen((char*)txd_msg_buffer1), 1000);
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take first number
-	a = byte - 48;
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take second number
-	b = byte - 48;
-	time[1] = (10*a + b); // total scaled time in hours
-
-	memset(txd_msg_buffer1, 0, sizeof(txd_msg_buffer1));  // Clear the buffer
-	sprintf((char*)txd_msg_buffer1, "\r\nFor Inlet Enter STOP TIME (0-23): ");
-	HAL_UART_Transmit(&huart6, txd_msg_buffer1, strlen((char*)txd_msg_buffer1), 1000);
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take first number
-	a = byte - 48;
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take second number
-	b = byte - 48;
-	time[2] = (10*a + b); // total scaled time in hours
-
-
-	// ZONE 1
 	sprintf((char*)txd_msg_buffer2, "\r\nFor Zone 1 INPUT PWM (in %%) 0) Manual 1) 60 2) 80 3) 99 : ");
 	HAL_UART_Transmit(&huart6, txd_msg_buffer2, strlen((char*)txd_msg_buffer2), 1000);
 	rcv_intpt_flag = 00;
@@ -614,36 +596,6 @@ int main(void)
 			break;
 	}
 
-	sprintf((char*)txd_msg_buffer3, "\r\nFor Zone 1 Enter START TIME (0-23): ");
-	HAL_UART_Transmit(&huart6, txd_msg_buffer3, strlen((char*)txd_msg_buffer3), 1000);
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take first number
-	a = byte - 48;
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take second number
-	b = byte - 48;
-	time[3] = (10*a + b); // total scaled time in hours
-
-	memset(txd_msg_buffer3, 0, sizeof(txd_msg_buffer1));  // Clear the buffer
-
-	sprintf((char*)txd_msg_buffer3, "\r\nFor Zone 1 Enter STOP TIME (0-23): ");
-	HAL_UART_Transmit(&huart6, txd_msg_buffer3, strlen((char*)txd_msg_buffer3), 1000);
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take first number
-	a = byte - 48;
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take second number
-	b = byte - 48;
-	time[4] = (10*a + b); // total scaled time in hours
-
-
-
-
-	// ZONE 2
 	sprintf((char*)txd_msg_buffer4, "\r\nFor Zone 2 INPUT PWM (in %%) 0) Manual 1) 60 2) 80 3) 99 : ");
 	HAL_UART_Transmit(&huart6, txd_msg_buffer4, strlen((char*)txd_msg_buffer4), 1000);
 	rcv_intpt_flag = 00;
@@ -663,35 +615,6 @@ int main(void)
 			break;
 	}
 
-	sprintf((char*)txd_msg_buffer5, "\r\nFor Zone 2 Enter START TIME (0-23): ");
-	HAL_UART_Transmit(&huart6, txd_msg_buffer5, strlen((char*)txd_msg_buffer5), 1000);
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take first number
-	a = byte - 48;
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take second number
-	b = byte - 48;
-	time[5] = (10*a + b); // total scaled time in hours
-
-	memset(txd_msg_buffer5, 0, sizeof(txd_msg_buffer1));  // Clear the buffer
-
-	sprintf((char*)txd_msg_buffer5, "\r\nFor Zone 2 Enter STOP TIME (0-23): ");
-	HAL_UART_Transmit(&huart6, txd_msg_buffer5, strlen((char*)txd_msg_buffer5), 1000);
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take first number
-	a = byte - 48;
-	rcv_intpt_flag = 00;
-	HAL_UART_Receive_IT(&huart6,&byte,1);
-	while(rcv_intpt_flag == (00)) {}  // Take second number
-	b = byte - 48;
-	time[6] = (10*a + b); // total scaled time in hours
-
-
-
-	// ZONE 3
 	sprintf((char*)txd_msg_buffer6, "\r\nFor Zone 3 INPUT PWM (in %%) 0) Manual 1) 60 2) 80 3) 99 : ");
 	HAL_UART_Transmit(&huart6, txd_msg_buffer6, strlen((char*)txd_msg_buffer6), 1000);
 	rcv_intpt_flag = 00;
@@ -711,7 +634,98 @@ int main(void)
 			break;
 	}
 
-	sprintf((char*)txd_msg_buffer7, "\r\nFor Zone 3 Enter START TIME (0-23): ");
+	sprintf((char*)txd_msg_buffer1, "\r\nFor Inlet Enter START TIME (00-23): ");
+	HAL_UART_Transmit(&huart6, txd_msg_buffer1, strlen((char*)txd_msg_buffer1), 1000);
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take first number
+	a = byte - 48;
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take second number
+	b = byte - 48;
+	time[1] = (10*a + b); // total scaled time in hours
+
+	memset(txd_msg_buffer1, 0, sizeof(txd_msg_buffer1));  // Clear the buffer
+	sprintf((char*)txd_msg_buffer1, "\r\nFor Inlet Enter STOP TIME (00-23): ");
+	HAL_UART_Transmit(&huart6, txd_msg_buffer1, strlen((char*)txd_msg_buffer1), 1000);
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take first number
+	a = byte - 48;
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take second number
+	b = byte - 48;
+	time[2] = (10*a + b); // total scaled time in hours
+
+
+	// ZONE 1
+
+	sprintf((char*)txd_msg_buffer3, "\r\nFor Zone 1 Enter START TIME (00-23): ");
+	HAL_UART_Transmit(&huart6, txd_msg_buffer3, strlen((char*)txd_msg_buffer3), 1000);
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take first number
+	a = byte - 48;
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take second number
+	b = byte - 48;
+	time[3] = (10*a + b); // total scaled time in hours
+
+	memset(txd_msg_buffer3, 0, sizeof(txd_msg_buffer1));  // Clear the buffer
+
+	sprintf((char*)txd_msg_buffer3, "\r\nFor Zone 1 Enter STOP TIME (00-23): ");
+	HAL_UART_Transmit(&huart6, txd_msg_buffer3, strlen((char*)txd_msg_buffer3), 1000);
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take first number
+	a = byte - 48;
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take second number
+	b = byte - 48;
+	time[4] = (10*a + b); // total scaled time in hours
+
+
+
+
+	// ZONE 2
+
+
+	sprintf((char*)txd_msg_buffer5, "\r\nFor Zone 2 Enter START TIME (00-23): ");
+	HAL_UART_Transmit(&huart6, txd_msg_buffer5, strlen((char*)txd_msg_buffer5), 1000);
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take first number
+	a = byte - 48;
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take second number
+	b = byte - 48;
+	time[5] = (10*a + b); // total scaled time in hours
+
+	memset(txd_msg_buffer5, 0, sizeof(txd_msg_buffer1));  // Clear the buffer
+
+	sprintf((char*)txd_msg_buffer5, "\r\nFor Zone 2 Enter STOP TIME (00-23): ");
+	HAL_UART_Transmit(&huart6, txd_msg_buffer5, strlen((char*)txd_msg_buffer5), 1000);
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take first number
+	a = byte - 48;
+	rcv_intpt_flag = 00;
+	HAL_UART_Receive_IT(&huart6,&byte,1);
+	while(rcv_intpt_flag == (00)) {}  // Take second number
+	b = byte - 48;
+	time[6] = (10*a + b); // total scaled time in hours
+
+
+
+	// ZONE 3
+
+
+	sprintf((char*)txd_msg_buffer7, "\r\nFor Zone 3 Enter START TIME (00-23): ");
 	HAL_UART_Transmit(&huart6, txd_msg_buffer7, strlen((char*)txd_msg_buffer7), 1000);
 	rcv_intpt_flag = 00;
 	HAL_UART_Receive_IT(&huart6,&byte,1);
@@ -725,7 +739,7 @@ int main(void)
 
 	memset(txd_msg_buffer7, 0, sizeof(txd_msg_buffer1));  // Clear the buffer
 
-	sprintf((char*)txd_msg_buffer7, "\r\nFor Zone 3 Enter STOP TIME (0-23): ");
+	sprintf((char*)txd_msg_buffer7, "\r\nFor Zone 3 Enter STOP TIME (00-23): ");
 	HAL_UART_Transmit(&huart6, txd_msg_buffer7, strlen((char*)txd_msg_buffer7), 1000);
 	rcv_intpt_flag = 00;
 	HAL_UART_Receive_IT(&huart6,&byte,1);
@@ -754,13 +768,14 @@ int main(void)
 		// Add a small delay before checking the B1 pin again
 		HAL_Delay(50);
 	}
-
+	clock_hours = time[0];
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+
 	  TIM3->CCR3 = 0;
 
 	  // Set timer board to 0
@@ -775,12 +790,9 @@ int main(void)
 	  HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_SET);
 
 
-
 	  // RUN MODE
 	  sprintf((char*)txd_msg_buffer8, "\r\n----------------RUN MODE----------------");
 	  HAL_UART_Transmit(&huart6, txd_msg_buffer8, strlen((char*)txd_msg_buffer8), 1000);
-
-
 
 	  // start timer
 	  HAL_TIM_Base_Init(&htim5);
@@ -789,18 +801,23 @@ int main(void)
 
 
 	  // To deal with first distance being 0
-	  while (distance == 0)
-	  {
-		  sprintf((char*)txd_msg_buffer11, "\r\n----------------RUN FROM JOSH----------------");
-		  HAL_UART_Transmit(&huart6, txd_msg_buffer11, strlen((char*)txd_msg_buffer8), 1000);
-		  distance_sensor();
+
+	  if (distance == 0) {
+	  distance_sensor();
+		memset(txd_msg_buffer10, 0, sizeof(txd_msg_buffer10));  // Clear the buffer
+
+
+	  sprintf((char*)txd_msg_buffer10, "\r\nTIME: %d INLET MODE -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[0], (int) rpm, distance);
+	  	HAL_UART_Transmit(&huart6, txd_msg_buffer10, strlen((char*)txd_msg_buffer10), 1000);
+
 	  }
 
-	  servo = 1;
-	  // INLET MODE
-	  clock_hours = 0;
+
+	  // ZONES
+
 	  while (distance <= 650 && distance != 0)
 	  {
+		  isFull = 0;
 		  //sec = 0;
 		  // Set color to purple
 		  HAL_GPIO_WritePin(GPIOA, RFD_Pin, GPIO_PIN_SET);
@@ -810,7 +827,7 @@ int main(void)
 		  TIM2->CCR1 = 2000;
 
 		  // dc motor runs for user specified time
-		  while (time[1] <= clock_hours && clock_hours <= time[2])
+		  while ((clock_hours >= time[1] && clock_hours <= time[2]) || isFull == 0)
 		  {
 			  // Timer
 			  TIM3->PSC = 160-1;
@@ -820,14 +837,19 @@ int main(void)
 			  distance_sensor();
 
 			  // Terminal Display
-			  sprintf((char*)txd_msg_buffer10, "\r\nTIME: %d INLET MODE -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[0], (int) rpm, distance);
-			  HAL_UART_Transmit(&huart6, txd_msg_buffer10, strlen((char*)txd_msg_buffer10), 1000);
-			  digits_set();
+			  if(clock_hours != pastHour) {
+				  sprintf((char*)txd_msg_buffer10, "\r\nTIME: %d INLET MODE -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[0], (int) rpm, distance);
+				  HAL_UART_Transmit(&huart6, txd_msg_buffer10, strlen((char*)txd_msg_buffer10), 1000);
+				  pastHour = clock_hours;
+			  }
 
-			  // If distance is less than 5, then reservoir is considered full
-			  if (distance <= 5)
+
+
+
+			  // If distance is less than 50, then resovoir is considered full
+			  if (distance >= 50)
 			  {
-
+				  digits_set();
 				  // dc motor speed
 				  if (zones[0] == 0)
 				  {
@@ -845,6 +867,7 @@ int main(void)
 
 				  if (distance != 0)
 				  {
+					  isFull = 1;
 					  TIM3->CCR1 = 0;
 					  DIGIT_A_Display(9);
 					  DIGIT_B_Display(9);
@@ -857,17 +880,7 @@ int main(void)
 
 		  TIM3->CCR1 = 0;
 		  rcv_intpt_flag = 00;
-		  break;
 
-	  }
-
-	  //sec = 0;
-
-
-
-	  // ZONES
-	  while (distance <= 650 && distance != 0)
-	  {
 		  // ZONE 1
 		  temp = 0;
 		  //sec = 0;
@@ -880,8 +893,6 @@ int main(void)
 		  // Servo rotate
 		  TIM2->CCR1 = 1500;
 
-
-
 		  // dc motor runs for user specified time
 		  while (time[3] <= clock_hours && clock_hours <= time[4] && temp == 0) {
 			  temp = 0;
@@ -893,13 +904,16 @@ int main(void)
 			  distance_sensor();
 
 			  // Terminal Display
-			  sprintf((char*)txd_msg_buffer12, "\r\nTIME: %d ZONE 1 -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[1], (int) rpm, distance);
-			  HAL_UART_Transmit(&huart6, txd_msg_buffer12, strlen((char*)txd_msg_buffer12), 1000);
-			  digits_set();
+			  if(clock_hours != pastHour){
+				  sprintf((char*)txd_msg_buffer12, "\r\nTIME: %d ZONE 1 -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[1], (int) rpm, distance);
+				  HAL_UART_Transmit(&huart6, txd_msg_buffer12, strlen((char*)txd_msg_buffer12), 1000);
+				  pastHour = clock_hours;
+			  }
 
-			  // If distance is less than 50, then reservoir is considered full
+			  // If distance is less than 50, then resovoir is considered full
 			  if (distance >= 50)
 			  {
+				  digits_set();
 
 				  if (digits[1] == 0 && digits[0] == 0){
 					  temp = 1;
@@ -955,7 +969,6 @@ int main(void)
 		  // Servo rotate
 		  TIM2->CCR1 = 1000;
 
-
 		  // dc motor runs for user specified time
 		  while (time[5] <= clock_hours && clock_hours <= time[6] && temp == 0)
 		  {
@@ -968,13 +981,17 @@ int main(void)
 			  distance_sensor();
 
 			  // Terminal Display
-			  sprintf((char*)txd_msg_buffer13, "\r\nTIME: %d ZONE 2 -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[2], (int) rpm, distance);
-			  HAL_UART_Transmit(&huart6, txd_msg_buffer13, strlen((char*)txd_msg_buffer13), 1000);
-			  digits_set();
+			  if(clock_hours != pastHour) {
+				  sprintf((char*)txd_msg_buffer13, "\r\nTIME: %d ZONE 2 -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[2], (int) rpm, distance);
+				  HAL_UART_Transmit(&huart6, txd_msg_buffer13, strlen((char*)txd_msg_buffer13), 1000);
+				  pastHour = clock_hours;
+			  }
 
-			  // If distance is less than 50, then reservoir is considered full
+
+			  // If distance is less than 50, then resovoir is considered full
 			  if (distance >= 50)
 			  {
+				  digits_set();
 
 				  if (digits[1] == 0 && digits[0] == 0)
 				  {
@@ -994,6 +1011,16 @@ int main(void)
 				  }
 			  }
 
+//			  else {
+//
+//				  if (distance != 0){
+//					  TIM3->CCR3 = 0;
+//					  DIGIT_A_Display(9);
+//					  DIGIT_B_Display(9);
+//				  }
+//
+//			  }
+
 		  }
 
 		  if (temp == 1)
@@ -1009,7 +1036,7 @@ int main(void)
 		  // ZONE 3
 
 		  //sec = 0;
-		  // Set rgb to blue
+		  // Set color to blue
 		  HAL_GPIO_WritePin(GPIOA, GRN_Pin, GPIO_PIN_RESET);
 		  HAL_GPIO_WritePin(GPIOA, BLU_Pin, GPIO_PIN_RESET);
 		  HAL_GPIO_WritePin(GPIOA, RFD_Pin, GPIO_PIN_RESET);
@@ -1017,7 +1044,6 @@ int main(void)
 
 		  // Servo rotate
 		  TIM2->CCR1 = 500;
-
 
 		  // dc motor runs for user specified time
 		  while (time[7] <= clock_hours && clock_hours <= time[8] && temp == 0)
@@ -1031,13 +1057,17 @@ int main(void)
 			  distance_sensor();
 
 			  // Terminal Display
-			  sprintf((char*)txd_msg_buffer14, "\r\nTIME: %d ZONE 3 -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[3], (int) rpm, distance);
-			  HAL_UART_Transmit(&huart6, txd_msg_buffer14, strlen((char*)txd_msg_buffer14), 1000);
-			  digits_set();
+			  if(clock_hours != pastHour){
+				  sprintf((char*)txd_msg_buffer14, "\r\nTIME: %d ZONE 3 -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[3], (int) rpm, distance);
+				  HAL_UART_Transmit(&huart6, txd_msg_buffer14, strlen((char*)txd_msg_buffer14), 1000);
+				  pastHour = clock_hours;
+			  }
 
-			  // If distance is less than 50, then reservoir is considered full
+
+			  // If ditance is less than 50, then resovoir is considered full
 			  if (distance >= 50)
 			  {
+				  digits_set();
 
 				  if (digits[1] == 0 && digits[0] == 0)
 				  {
@@ -1073,15 +1103,18 @@ int main(void)
 		  {
 			  break;
 		  }
-		  	//memset(txd_msg_buffer14, 0, sizeof(txd_msg_buffer1));  // Clear the buffer
+		  if(clock_hours != pastHour){
+			  sprintf((char*)txd_msg_buffer14, "\r\nTIME: %d IDLE -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[3], (int) rpm, distance);
+			  HAL_UART_Transmit(&huart6, txd_msg_buffer14, strlen((char*)txd_msg_buffer14), 1000);
+			  pastHour = clock_hours;
+		  }
+		  distance_sensor();
 
-			//sprintf((char*)txd_msg_buffer14, "\r\nTIME: %d IDLE MODE -- PWM: %d -- RPM: %d DEPTH: %d", clock_hours,  zones[3], (int) rpm, distance);
-			  //HAL_UART_Transmit(&huart6, txd_msg_buffer14, strlen((char*)txd_msg_buffer14), 1000);
 		  TIM3->CCR3 = 0;
 		  rcv_intpt_flag = 00;
 
 	}
-
+	  //sec = 0;
 
     /* USER CODE END WHILE */
 
@@ -1228,7 +1261,7 @@ static void MX_TIM2_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 500-1;
+  sConfigOC.Pulse = 500;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
@@ -1348,44 +1381,6 @@ static void MX_TIM5_Init(void)
   /* USER CODE BEGIN TIM5_Init 2 */
 
   /* USER CODE END TIM5_Init 2 */
-
-}
-
-/**
-  * @brief TIM9 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM9_Init(void)
-{
-
-  /* USER CODE BEGIN TIM9_Init 0 */
-
-  /* USER CODE END TIM9_Init 0 */
-
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-
-  /* USER CODE BEGIN TIM9_Init 1 */
-
-  /* USER CODE END TIM9_Init 1 */
-  htim9.Instance = TIM9;
-  htim9.Init.Prescaler = 16000-1;
-  htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim9.Init.Period = 1000-1;
-  htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim9, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM9_Init 2 */
-
-  /* USER CODE END TIM9_Init 2 */
 
 }
 
@@ -1560,10 +1555,14 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+
+
 	if(GPIO_Pin == RPM_Tick_Pin)
 	{
 		rpm_tick_count += 1;
 	}
+
+
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
@@ -1589,22 +1588,25 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		seconds += 1;
 		sec += 1;
 		clock_seccs += 1; // for RPM
+		clock_secs += 1; // this could be a variable for seconds etc.
 
-		if(sec == 6){
+		if(sec % 2 == 0) {
 			clock_hours++;
+		}
+
+		if(clock_hours >= 24) {
+			clock_hours = 0;
 			sec = 0;
 		}
 
-		if(clock_hours >= 24){
-		  clock_hours = 0;
-	  }
-
-
-		rpm = rpm_tick_count / 20.0;
-		rpm = (rpm)*60.0;
-		rpm_tick_count = 0;
-
-
+		// RPM Calculation
+		if (clock_seccs == 2)
+		{
+			rpm = rpm_tick_count / 20;
+			rpm = (rpm/clock_seccs)*60;
+			clock_seccs = 0;
+			rpm_tick_count = 0;
+		}
 	}
 }
 /* USER CODE END 4 */
